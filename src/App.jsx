@@ -224,8 +224,7 @@ function doDownloadCSV(cart, products, customerInfo, currency) {
   document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
 }
 
-async function uploadReceiptToStorage(csvContent, filename, token) {
-  // Upload to Supabase Storage bucket "iys-receipts"
+async function uploadReceiptToStorage(csvContent, filename) {
   try {
     const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
     const controller = new AbortController();
@@ -235,24 +234,24 @@ async function uploadReceiptToStorage(csvContent, filename, token) {
       signal: controller.signal,
       headers: {
         apikey: SUPABASE_ANON_KEY,
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
         "Content-Type": "text/csv",
         "x-upsert": "true",
       },
       body: blob,
     });
     clearTimeout(t);
+    if (!res.ok) { const err = await res.text(); console.error("Receipt upload failed:", res.status, err); }
     return res.ok;
-  } catch {
+  } catch (e) {
+    console.error("Receipt upload error:", e);
     return false;
   }
 }
 
-async function saveReceiptRecord(filename, customerInfo, totalEGP, currency, token) {
-  // Save a record in iys_receipts table so admin can track & email link
+async function saveReceiptRecord(filename, customerInfo, totalEGP, currency) {
   return sbFetch("/iys_receipts", {
     method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
     body: JSON.stringify({
       filename,
       customer_name: customerInfo.name,
@@ -264,6 +263,7 @@ async function saveReceiptRecord(filename, customerInfo, totalEGP, currency, tok
     }),
   });
 }
+
 
 async function saveOrder(cart, products, customerInfo, currency, token) {
   const cur = CURRENCY_RATES[currency];
@@ -594,10 +594,10 @@ export default function App() {
     doDownloadCSV(cart, liveProducts, customerInfo, currency);
 
     // Upload receipt to Supabase Storage (iys-receipts bucket) — admin gets a copy
-    uploadReceiptToStorage(csvContent, filename, session.token);
+    uploadReceiptToStorage(csvContent, filename);
 
     // Save a receipt record so admin can retrieve/email it
-    saveReceiptRecord(filename, customerInfo, totalEGP, currency, session.token);
+    saveReceiptRecord(filename, customerInfo, totalEGP, currency);
 
     await saveOrder(cart, liveProducts, customerInfo, currency, session.token);
     setShopPage("confirmed");
